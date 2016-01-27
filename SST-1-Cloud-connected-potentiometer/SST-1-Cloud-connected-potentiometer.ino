@@ -1,3 +1,11 @@
+/*************************************************************************
+* An Arduino sketch that connects to ThingWorx and transmits the readout *
+* of a potentiometer to a specific Thing.                                *
+* Change the TODO: values and destination server where needed.           *
+*                                                                        *
+* Written by Marien "dotCID" Wolthuis, 27/01/2016.                       *
+**************************************************************************/
+
 #include <SoftwareSerial.h> 
 #include <SparkFunESP8266WiFi.h>
 
@@ -21,16 +29,12 @@
 // TODO: change this to your Property's name
 #define propertyName "potMeterValue"
 
-// The maximum length we expect for a replied JSON string.
-#define REPLY_MAX_LENGTH 150
-
 //Interval of time at which you want the properties values to be sent to TWX server [ms]
 #define timeBetweenMessages 500
 
 // TODO: change this to the pin you are using
 #define potPin A0
 
-ESP8266Client client;
 String httpRequest;
 bool displayResponse = true; // this controls whether we see the HTTP response
 bool displayRequest = true;  // this controls whether we print the request we send
@@ -53,96 +57,77 @@ void setup(){
   displayConnectInfo();
   
   pinMode(potPin, INPUT);
-  
 }
 
 void loop() 
 {
-
-	potValue = analogRead(potPin);
-	Serial.print(F("potValue = "));
-	Serial.println(potValue);
-	
-	// now make a request to post this to the server.
-	httpRequest = "POST /Thingworx/Things/";
-	httpRequest+= thingName;
-	httpRequest+= "/Services/";
-	httpRequest+= serviceName;
-	httpRequest+= "?appKey=";
-	httpRequest+= appKey;
-	httpRequest+= "&method=post&x-thingworx-session=true";
-	httpRequest+= "<&";
-	httpRequest+= propertyName;
-	httpRequest+= "=";
-	httpRequest+= potValue;
-	httpRequest+= "> HTTP/1.1\r\n";
-	httpRequest+= "Host: ";
-	httpRequest+= destServer;
-	httpRequest+= "\r\n";
-	httpRequest+= "Content-Type: text/html\r\n\r\n";
-	
-	if(displayRequest) {
-		Serial.println(F("Sending request:\n"));
-		Serial.println(httpRequest);
-	}else{
-		Serial.println(F("Sending data to ThingWorx."));
-	}
-	
-	char* reply = sendRequest();
-	if(displayResponse){
-		Serial.println(reply);
-	}
-	
-	delay(timeBetweenMessages);
+  potValue = analogRead(potPin);
+  Serial.print(F("potValue = "));
+  Serial.println(potValue);
+  
+  // now make a request to post this to the server.
+  httpRequest = "POST /Thingworx/Things/";
+  httpRequest+= thingName;
+  httpRequest+= "/Services/";
+  httpRequest+= serviceName;
+  httpRequest+= "?appKey=";
+  httpRequest+= appKey;
+  httpRequest+= "&method=post&x-thingworx-session=true";
+  httpRequest+= "<&";
+  httpRequest+= propertyName;
+  httpRequest+= "=";
+  httpRequest+= potValue;
+  httpRequest+= "> HTTP/1.1\r\n";
+  httpRequest+= "Host: ";
+  httpRequest+= destServer;
+  httpRequest+= "\r\n";
+  httpRequest+= "Content-Type: text/html\r\n\r\n";
+  
+  if(displayRequest) {
+    Serial.println(F("Sending request:\n"));
+    Serial.println(httpRequest);
+  }else{
+    Serial.println(F("Sending data to ThingWorx."));
+  }
+  
+  sendRequest();
+  
+  delay(timeBetweenMessages);
 }
 
 // Sends a HTTP request based on the contents of a variable called httpRequest.
 // Originally written by SparkFun, adapted by Adrie Kooijman and Marien Wolthuis
-char* sendRequest()
+void sendRequest()
 {
-	ESP8266Client client;
-	// ESP8266Client connect([server], [port], [keepAlive]) is used to connect to a server (const char * or IPAddress) on a specified port, and keep the connection alive for the specified amount of time.
-	// Returns: 1 on success, 2 on already connected, negative on fail (-1=TIMEOUT, -3=FAIL).
-	int retVal = client.connect(destServer, 80, 100);
-	if (retVal <= 0)
-	{
-		Serial.print(F("Failed to connect to server."));
-		Serial.print(F("retVal: "));
-		Serial.println(retVal);
-		return "";
-	}
+  ESP8266Client client;
+  // ESP8266Client connect([server], [port], [keepAlive]) is used to connect to a server (const char * or IPAddress) on a specified port, and keep the connection alive for the specified amount of time.
+  // Returns: 1 on success, 2 on already connected, negative on fail (-1=TIMEOUT, -2=UNKNOWN, -3=FAIL).
+  int retVal = client.connect(destServer, 80, 100);
+  if (retVal <= 0)
+  {
+    Serial.print(F("Failed to connect to server."));
+    Serial.print(F("retVal: "));
+    Serial.println(retVal);
+    return;
+  }
 
-	// Send data to a connected client connection.
-	client.print(httpRequest);
+  // Send data to a connected client connection.
+  client.print(httpRequest);
 
-	// available() will return the number of characters currently in the receive buffer.
-	// The code below filters out all HTML and only saves what might be a JSON string
-	// This cannot deal with nested JSON arrays!
-	char reply[REPLY_MAX_LENGTH] = "";
-	int i = 0;
-	while (client.available()){
-		if(displayResponse){
-		  // This outputs the entire response to Serial and saves none of it
-			Serial.write(client.read()); // read() gets the FIFO char
-		}else{
-			char rep = client.read();
-			if(rep == '{'){                 // JSON strings always start with this
-				while (client.available() && rep != '}'){
-					reply[i] = rep; 
-					rep = client.read();
-					i++;
-				}
-				reply[i] = rep; // to get the closing bracket too
-			}
-		}
-	}
-	
-	// connected() is a boolean return value; 1 if the connection is active, 0 if it's closed.
-	if (client.connected()){
-		client.stop(); // stop() closes a TCP connection.
-	}
-	
-	return reply;
+  httpRequest = "";
+  // available() will return the number of characters currently in the receive buffer.
+  while (client.available()){
+    char rep = client.read();
+    if(displayResponse){
+      // This outputs the entire response to Serial and saves none of it
+      Serial.print(rep); // read() gets the next character
+    }
+  }
+  
+  // connected() is a boolean return value; 1 if the connection is active, 0 if it's closed.
+  if (client.connected()){
+    client.stop(); // stop() closes a TCP connection.
+  }
 }
 
 // ---- Helper functions for the ESP, written by Sparkfun -------
@@ -155,8 +140,8 @@ void initializeESP8266()
   if (test != true)
   {
     Serial.println(F("Error talking to ESP8266."));
-	// Inserted by Marien Wolthuis; easiest way to fix connection issues
-	Serial.println(F("This is usually fixed by resetting the ESP8266 (ground the RST pin for a second), then resetting the Arduino."));
+  // Inserted by Marien Wolthuis; easiest way to fix connection issues
+  Serial.println(F("This is usually fixed by resetting the ESP8266 (ground the RST pin for a second, then wait for the blue LED to light), then resetting the Arduino."));
     errorLoop(test);
   }
   Serial.println(F("ESP8266 Shield Present"));
